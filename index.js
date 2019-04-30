@@ -3,7 +3,7 @@
  * Module dependencies.
  */
 
-const debug = require('debug')('koa-ratelimit');
+const debug = require('debug')('micro-ratelimit2');
 const Limiter = require('ratelimiter');
 const ms = require('ms');
 
@@ -31,24 +31,35 @@ module.exports = ratelimit;
  * @return {Function}
  * @api public
  */
-
-function ratelimit(opts = {}) {
+ function keyGenerator(req) {
+  return req.headers['x-forwarded-for'] ||
+    req.connection.remoteAddress ||
+    req.socket.remoteAddress ||
+    req.connection.socket.remoteAddress
+}
+function ratelimit(opts = {}, handler) {
+  if (!handler) {
+    handler = opts;
+    opts = {};
+  }
   const {
     remaining = 'X-RateLimit-Remaining',
     reset = 'X-RateLimit-Reset',
     total = 'X-RateLimit-Limit'
   } = opts.headers || {}
 
-  return async function ratelimit(ctx, next) {
-    const id = opts.id ? opts.id(ctx) : ctx.ip;
-    const whitelisted = typeof opts.whitelist === 'function' ? await opts.whitelist(ctx) : false;
-    const blacklisted = typeof opts.blacklist === 'function' ? await opts.blacklist(ctx) : false;
+  return async function ratelimit(req, res) {
+    const id = opts.id ? opts.id(req) : keyGenerator(req);
+    const whitelisted = typeof opts.whitelist === 'function' ? await opts.whitelist(req) : false;
+    const blacklisted = typeof opts.blacklist === 'function' ? await opts.blacklist(req) : false;
 
     if (blacklisted) {
-      ctx.throw(403, 'Forbidden')
+      const err = new Error('Forbidden')
+      err.statusCode = 493
+      throw err
     }
 
-    if (false === id || whitelisted) return await next();
+    if (false === id || whitelisted) return await handler(req, res);
 
     // initialize limiter
     const limiter = new Limiter(Object.assign({}, opts, { id }));
@@ -62,31 +73,27 @@ function ratelimit(opts = {}) {
     // check if header disabled
     const disableHeader = opts.disableHeader || false;
 
-    let headers = {};
     if (!disableHeader) {
-      // header fields
-      headers = {
-        [remaining]: calls,
-        [reset]: limit.reset,
-        [total]: limit.total
-      };
-
-      ctx.set(headers);
+      res.setHeader(total, limit.total)
+      res.setHeader(remaining, calls)
+      res.setHeader(reset, limit.reset)
     }
 
     debug('remaining %s/%s %s', remaining, limit.total, id);
-    if (limit.remaining) return await next();
+    if (limit.remaining) return await handler(req, res);
 
     const delta = (limit.reset * 1000) - Date.now() | 0;
     const after = limit.reset - (Date.now() / 1000) | 0;
-    ctx.set('Retry-After', after);
+    res.setHeader('Retry-After', after);
 
-    ctx.status = 429;
-    ctx.body = opts.errorMessage || `Rate limit exceeded, retry in ${ms(delta, { long: true })}.`;
+    res.statusCode = 429;
 
     if (opts.throw) {
-      ctx.throw(ctx.status, ctx.body, { headers });
+      const err = new Error(res.body)
+      err.statusCode = res.statusCode
+      throw err
     }
+    res.end(opts.errorMessage || `Rate limit exceeded, retry in ${ms(delta, { long: true })}.`);
   }
 }
 

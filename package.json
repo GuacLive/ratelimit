@@ -1,10 +1,10 @@
 {
-  "name": "koa-ratelimit",
-  "description": "Rate limiter middleware for koa",
-  "repository": "koajs/ratelimit",
+  "name": "micro-ratelimit2",
+  "description": "Rate limiter middleware for micro",
+  "repository": "GuacLive/ratelimit",
   "version": "4.2.0",
   "keywords": [
-    "koa",
+    "micro",
     "middleware",
     "ratelimiter",
     "ratelimit",
