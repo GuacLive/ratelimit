@@ -2,7 +2,7 @@
   "name": "micro-ratelimit2",
   "description": "Rate limiter middleware for micro",
   "repository": "GuacLive/ratelimit",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "keywords": [
     "micro",
     "middleware",
